@@ -1,8 +1,6 @@
-let isBeingAccessedInsideReaction = false;
-let reactionCb = null;
-let reactionsToRemove = [];
+import store from './reactiveStore.js'
 
-function makeObservable (original) {
+export function makeObservable (original) {
 
     const callbackRecords = {};
 
@@ -21,12 +19,12 @@ function makeObservable (original) {
     // and listen to it when it is being set/retreived.
     const handler = {
         get: function (target, property, receiver) {
-            if (isBeingAccessedInsideReaction && reactionCb) {
+            if (store.isBeingAccessedInsideReaction && store.reactionCb) {
                 // Append the cb to an array.
                 if (!Array.isArray(callbackRecords[property])) {
                     callbackRecords[property] = [];
                 }
-                callbackRecords[property].push(reactionCb);
+                callbackRecords[property].push(store.reactionCb);
             }
             return original[property];
         },
@@ -35,13 +33,15 @@ function makeObservable (original) {
 
             Array.isArray(callbackRecords[property]) &&
             callbackRecords[property].forEach((cb, index) => {
-                if (reactionsToRemove.includes(cb)) {
+                if (store.reactionsToRemove.includes(cb)) {
                     disposeCallback(cb);
                 }
                 else {
                     cb();
                 }
-            })
+            });
+
+            return true;
         }
     };
 
@@ -50,45 +50,23 @@ function makeObservable (original) {
 }
 
 function _removeReaction (cb) {
-    reactionsToRemove.push(cb);
+    store.reactionsToRemove.push(cb);
 }
 
-function reaction (initiator, cb) {
+export function reaction (initiator, cb) {
     // Any getters that are accessed inside the initiator
     // need to be recorded.
     // When any of these get values are set, we fire the
     // callback.
 
-    isBeingAccessedInsideReaction = true;
-    reactionCb = cb;
+    store.isBeingAccessedInsideReaction = true;
+    store.reactionCb = cb;
     initiator();
-    isBeingAccessedInsideReaction = false;
-    reactionCb = null;
+    store.isBeingAccessedInsideReaction = false;
+    store.reactionCb = null;
 
     return () => { _removeReaction(cb); }
 
 }
 
-class Test {
-    testProp = null;
 
-    constructor () {
-        return makeObservable(this);
-    }
-}
-
-const test = new Test;
-console.log(test.testProp);
-test.testProp = 'hello';
-
-let reactionDisposer = reaction(() => {
-    return test.testProp
-}, () => {
-    console.log('testProp was changed to', test.testProp);
-});
-
-console.log('test.testProp has value', test.testProp);
-test.testProp = 'world';
-console.log('test.testProp has value', test.testProp);
-reactionDisposer();
-test.testProp = 'xoxo';
